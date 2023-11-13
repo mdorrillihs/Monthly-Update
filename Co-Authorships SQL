@@ -1,0 +1,348 @@
+WITH DeduplicatedResults AS (
+  WITH Selection_Query as (
+    WITH PubsA as(
+      WITH Pubs1 as (
+        select distinct 
+          pub.id as PubId1, 
+          pub.title.preferred as pub_title1, 
+          pub.doi AS DOI1, 
+          pub.date_normal as PublicationDate1,
+          CONCAT(contact.First_Name,' ',contact.Last_Name)as Author1,
+          contact.CaseSafeID AS CSID1,
+          AUTH.researcher_id as AuthID1,
+          pub.Citations_Count as Citations_Count,
+          altmetrics.score AS Altmetric_Score
+        from 
+          dimensions-ai.data_analytics.publications pub, unnest(authors) as AUTH 
+            JOIN `Salesforce.Database_ID` DatId
+              ON researcher_id=DatId.Dimensions_ID 
+            JOIN `Salesforce.Contact` contact 
+              ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        where 
+          EXTRACT(YEAR FROM pub.date_normal) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND EXTRACT(MONTH FROM pub.date_normal) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+      ),
+      Pubs2 as (
+        select distinct 
+          pub.id as PubId2, 
+          CONCAT(contact.First_Name,' ',contact.Last_Name)as Author2,
+          contact.CaseSafeID AS CSID2,
+          AUTH.researcher_id as AuthID2
+        from 
+          dimensions-ai.data_analytics.publications pub, unnest(authors) as AUTH 
+            JOIN `Salesforce.Database_ID` DatId
+              ON researcher_id=DatId.Dimensions_ID 
+            JOIN `Salesforce.Contact` contact 
+              ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        where 
+          EXTRACT(YEAR FROM pub.date_normal) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND EXTRACT(MONTH FROM pub.date_normal) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+      )
+      SELECT DISTINCT
+        CASE WHEN CSID2 < CSID1 THEN Author2 ELSE Author1 END AS Author_1,
+        CASE WHEN CSID2 < CSID1 THEN Author1 ELSE Author2 END AS Author_2, 
+        Pubs1.pub_title1 as Publication_Title, 
+        PubId1 as PublicationID, 
+        DOI1 as DOI, 
+        Pubs1.PublicationDate1 as Publication_Date,
+        Pubs1.Citations_Count,
+        Pubs1.Altmetric_Score,
+        CASE WHEN CSID2 < CSID1 THEN CSID2 ELSE CSID1 END as CaseSafeID_1,
+        CASE WHEN CSID2 < CSID1 THEN CSID1 ELSE CSID2 END as CaseSafeID_2,
+        CASE WHEN CSID2 < CSID1 THEN CAST(AuthID2 as STRING) ELSE CAST(AuthID1 as STRING) END as Author_ID_1,
+        CASE WHEN CSID2 < CSID1 THEN CAST(AuthID1 as STRING) ELSE CAST(AuthID2 as STRING) END as Author_ID_2
+      from Pubs1 
+        JOIN Pubs2 
+          ON Pubs1.PubID1 = Pubs2.PubId2 
+      WHERE PubID1 = Pubs2.PubId2 AND Pubs1.CSID1 != pubs2.CSID2
+    ),
+    PubsB AS (
+      WITH Pubs1 as (
+        select distinct 
+          SemSch.corpusid AS PubId1, 
+          SemSch.title AS pub_title1, 
+          SemSch.externalids.doi AS DOI1, 
+          SemSch.publicationdate as PublicationDate1, 
+          CONCAT(contact.First_Name,' ',contact.Last_Name) as Author1, 
+          contact.CaseSafeID AS CSID1, 
+          AUTH.authorid as AuthID1,
+          SemSch.citationcount as Citations_Count
+        from 
+          `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH  
+          JOIN `Salesforce.Database_ID` DatId
+            ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+          JOIN `Salesforce.Contact` contact 
+            ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        WHERE 
+          EXTRACT(YEAR FROM SemSch.publicationdate) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND EXTRACT(MONTH FROM SemSch.publicationdate) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+        ),
+      Pubs2 as (
+        select distinct 
+          SemSch.corpusid AS PubId2, 
+          CONCAT(contact.First_Name,' ',contact.Last_Name) as Author2, 
+          contact.CaseSafeID AS CSID2, 
+          AUTH.authorid as AuthID2
+        from 
+          `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH  
+          JOIN `Salesforce.Database_ID` DatId
+            ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+          JOIN `Salesforce.Contact` contact 
+            ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        WHERE 
+          EXTRACT(YEAR FROM SemSch.publicationdate) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND EXTRACT(MONTH FROM SemSch.publicationdate) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+        ) 
+      SELECT DISTINCT
+        CASE WHEN CSID2 < CSID1 THEN Author2 ELSE Author1 END AS Author_1,
+        CASE WHEN CSID2 < CSID1 THEN Author1 ELSE Author2 END AS Author_2, 
+        Pubs1.pub_title1 as Publication_Title, 
+        CAST(PubId1 as STRING) as PublicationID, 
+        DOI1 as DOI, 
+        Pubs1.PublicationDate1 as Publication_Date,
+        Pubs1.Citations_Count,
+        NULL as Altmetric_Score,
+        CASE WHEN CSID2 < CSID1 THEN CSID2 ELSE CSID1 END as CaseSafeID_1,
+        CASE WHEN CSID2 < CSID1 THEN CSID1 ELSE CSID2 END as CaseSafeID_2,
+        CASE WHEN CSID2 < CSID1 THEN CAST(AuthID2 as STRING) ELSE CAST(AuthID1 as STRING) END as Author_ID_1,
+        CASE WHEN CSID2 < CSID1 THEN CAST(AuthID1 as STRING) ELSE CAST(AuthID2 as STRING) END as Author_ID_2
+      from Pubs1 
+        JOIN Pubs2 
+          ON Pubs1.PubID1 = Pubs2.PubId2 
+      WHERE PubID1 = Pubs2.PubId2 AND Pubs1.CSID1 != pubs2.CSID2
+    )
+  Select 
+    *,
+    CONCAT(CaseSafeID_1,'-',CaseSafeID_2) as Relationship_Code,
+    CONCAT(CaseSafeID_1,'-',CaseSafeID_2,"-",DOI) as Instance_Check_Code,
+    CASE WHEN
+      CaseSafeID_2 < CaseSafeID_1
+      THEN CONCAT(CaseSafeID_1,"-",CaseSafeID_2)
+      ELSE CONCAT(CaseSafeID_2,"-",CaseSafeID_1)
+      END AS CamMemCode
+  from (
+    Select * from PubsA
+    UNION ALL
+    Select * from PubsB
+  ) as Co_Authorship_Results
+),
+Total_Query as (
+  WITH AllPairs as (
+    WITH PubsA as(
+      WITH Pubs1 as (
+        select distinct 
+          pub.id as PubId1, 
+          pub.title.preferred as pub_title1, 
+          pub.doi AS DOI1, 
+          pub.date_normal as PublicationDate1,
+          CONCAT(contact.First_Name,' ',contact.Last_Name)as Author1,
+          contact.CaseSafeID AS CSID1,
+          AUTH.researcher_id as AuthID1,
+          pub.Citations_Count as Citations_Count,
+          altmetrics.score AS Altmetric_Score
+        from 
+          dimensions-ai.data_analytics.publications pub, unnest(authors) as AUTH 
+            JOIN `Salesforce.Database_ID` DatId
+              ON researcher_id=DatId.Dimensions_ID 
+            JOIN `Salesforce.Contact` contact 
+              ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        where 
+          Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+      ),
+      Pubs2 as (
+        select distinct 
+          pub.id as PubId2, 
+          CONCAT(contact.First_Name,' ',contact.Last_Name)as Author2,
+          contact.CaseSafeID AS CSID2,
+          AUTH.researcher_id as AuthID2
+        from 
+          dimensions-ai.data_analytics.publications pub, unnest(authors) as AUTH 
+            JOIN `Salesforce.Database_ID` DatId
+              ON researcher_id=DatId.Dimensions_ID 
+            JOIN `Salesforce.Contact` contact 
+              ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        where 
+          Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+      )
+      SELECT DISTINCT
+        CASE WHEN CSID2 < CSID1 THEN Author2 ELSE Author1 END AS Author_1,
+        CASE WHEN CSID2 < CSID1 THEN Author1 ELSE Author2 END AS Author_2, 
+        Pubs1.pub_title1 as Publication_Title, 
+        PubId1 as PublicationID, 
+        DOI1 as DOI, 
+        Pubs1.PublicationDate1 as Publication_Date,
+        Pubs1.Citations_Count,
+        Pubs1.Altmetric_Score,
+        CASE WHEN CSID2 < CSID1 THEN CSID2 ELSE CSID1 END as CaseSafeID_1,
+        CASE WHEN CSID2 < CSID1 THEN CSID1 ELSE CSID2 END as CaseSafeID_2,
+        CASE WHEN CSID2 < CSID1 THEN CAST(AuthID2 as STRING) ELSE CAST(AuthID1 as STRING) END as Author_ID_1,
+        CASE WHEN CSID2 < CSID1 THEN CAST(AuthID1 as STRING) ELSE CAST(AuthID2 as STRING) END as Author_ID_2
+      from Pubs1 
+        JOIN Pubs2 
+          ON Pubs1.PubID1 = Pubs2.PubId2 
+      WHERE PubID1 = Pubs2.PubId2 AND Pubs1.CSID1 != pubs2.CSID2
+      ),
+    PubsB AS (
+      WITH Pubs1 as (
+        select distinct 
+          SemSch.corpusid AS PubId1, 
+          SemSch.title AS pub_title1, 
+          SemSch.externalids.doi AS DOI1, 
+          SemSch.publicationdate as PublicationDate1, 
+          CONCAT(contact.First_Name,' ',contact.Last_Name) as Author1, 
+          contact.CaseSafeID AS CSID1, 
+          AUTH.authorid as AuthID1,
+          SemSch.citationcount as Citations_Count
+        from 
+          `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH  
+          JOIN `Salesforce.Database_ID` DatId
+            ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+          JOIN `Salesforce.Contact` contact 
+            ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        WHERE 
+          Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+        ),
+      Pubs2 as (
+        select distinct 
+          SemSch.corpusid AS PubId2, 
+          CONCAT(contact.First_Name,' ',contact.Last_Name) as Author2, 
+          contact.CaseSafeID AS CSID2, 
+          AUTH.authorid as AuthID2
+        from 
+          `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH  
+          JOIN `Salesforce.Database_ID` DatId
+            ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+          JOIN `Salesforce.Contact` contact 
+            ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        WHERE 
+          Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+        ) 
+      SELECT DISTINCT
+        CASE WHEN CSID2 < CSID1 THEN Author2 ELSE Author1 END AS Author_1,
+        CASE WHEN CSID2 < CSID1 THEN Author1 ELSE Author2 END AS Author_2, 
+        Pubs1.pub_title1 as Publication_Title, 
+        CAST(PubId1 as STRING) as PublicationID, 
+        DOI1 as DOI, 
+        Pubs1.PublicationDate1 as Publication_Date,
+        Pubs1.Citations_Count,
+        NULL as Altmetric_Score,
+        CASE WHEN CSID2 < CSID1 THEN CSID2 ELSE CSID1 END as CaseSafeID_1,
+        CASE WHEN CSID2 < CSID1 THEN CSID1 ELSE CSID2 END as CaseSafeID_2,
+        CASE WHEN CSID2 < CSID1 THEN CAST(AuthID2 as STRING) ELSE CAST(AuthID1 as STRING) END as Author_ID_1,
+        CASE WHEN CSID2 < CSID1 THEN CAST(AuthID1 as STRING) ELSE CAST(AuthID2 as STRING) END as Author_ID_2
+      from Pubs1 
+        JOIN Pubs2 
+          ON Pubs1.PubID1 = Pubs2.PubId2 
+      WHERE PubID1 = Pubs2.PubId2 AND Pubs1.CSID1 != pubs2.CSID2
+    )
+    Select 
+      *,
+      CONCAT(CaseSafeID_1,'-',CaseSafeID_2) as Relationship_Code,
+      CONCAT(CaseSafeID_1,'-',CaseSafeID_2,"-",DOI) as Instance_Check_Code
+    from (
+      Select * from PubsA
+      UNION ALL
+      Select * from PubsB
+    ) as Co_Authorship_Results
+  )
+  SELECT DISTINCT
+    *
+  FROM (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (PARTITION BY Relationship_Code ORDER BY publication_Date) as row_num
+    FROM AllPairs
+  ) as RankedPairs
+  WHERE row_num = 1
+),
+CampaignMatchQuery as (
+  With Attendee1 as (
+    SELECT
+      Campaign_ID,
+      Related_Record_ID
+    FROM
+      `Salesforce.CampaignMember` CamMem
+    WHERE
+      Member_Status = "Completed"
+  ),
+  Attendee2 as (
+    SELECT
+      Campaign_ID,
+      Related_Record_ID
+    FROM
+      `Salesforce.CampaignMember` CamMem
+    WHERE
+      Member_Status = "Completed"
+  )
+  SELECT DISTINCT
+    CASE WHEN
+      Attendee2.Related_Record_ID < Attendee1.Related_Record_ID
+      THEN CONCAT(Attendee1.Related_Record_ID,"-",Attendee2.Related_Record_ID)
+      ELSE CONCAT(Attendee2.Related_Record_ID,"-",Attendee1.Related_Record_ID)
+      END AS CamMemCode
+  from 
+    Attendee1
+      JOIN Attendee2
+        ON Attendee1.Campaign_ID = Attendee2.Campaign_ID
+  WHERE
+    Attendee1.Related_Record_ID != Attendee2.Related_Record_ID
+)
+  SELECT
+    Selection_Query.Author_1,
+    Selection_Query.Author_2,
+    CASE
+      WHEN Total_Query.Relationship_Code IS NOT NULL THEN 'First instance'
+      ELSE 'Not first instance'
+    END AS First_Instance_Status,
+    CASE
+      WHEN CampaignMatchQuery.CamMemCode IS NOT NULL THEN 'Have attended together'
+      ELSE 'Have not attended together'
+    END AS Co_Attendance_Status,
+    Selection_Query.Publication_Title,
+    Selection_Query.PublicationID,
+    Selection_Query.DOI,
+    Selection_Query.Publication_Date,
+    Selection_Query.Citations_Count,
+    Selection_Query.Altmetric_Score,
+    Selection_Query.CaseSafeID_1,
+    Selection_Query.CaseSafeID_2,
+    Selection_Query.Author_ID_1,
+    Selection_Query.Author_ID_2,
+    ROW_NUMBER() OVER (PARTITION BY LOWER(Selection_Query.DOI), LOWER(Selection_Query.CaseSafeID_1), LOWER(Selection_Query.CaseSafeID_2) ORDER BY Selection_Query.Altmetric_Score) as unique
+  FROM
+    Selection_Query
+    LEFT JOIN Total_Query 
+      ON Selection_Query.Instance_Check_Code = Total_Query.Instance_Check_Code
+    LEFT JOIN CampaignMatchQuery
+      ON Selection_Query.CamMemCode = CampaignMatchQuery.CamMemCode
+)
+SELECT
+  Author_1,
+  Author_2,
+  First_Instance_Status,
+  Co_Attendance_Status,
+  Publication_Title,
+  PublicationID,
+  DOI,
+  Publication_Date,
+  Citations_Count,
+  Altmetric_Score,
+  CaseSafeID_1,
+  CaseSafeID_2,
+  Author_ID_1,
+  Author_ID_2,
+  CONCAT(CaseSafeID_1,"-",CaseSafeID_2) as Relationship_Code
+FROM DeduplicatedResults
+WHERE unique = 1;
