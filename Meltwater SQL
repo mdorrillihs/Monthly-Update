@@ -1,0 +1,34 @@
+select 
+  Media.Contact as CaseSafeID, 
+  CONCAT(Contact.First_Name," ",Contact.Last_Name) as Name, 
+  Contact.Primary_Organization, 
+  Contact.Primary_Discipline, 
+  Contact.Primary_Affiliation_Record_Type, 
+  Contact.Highest_Outreach_Priority, 
+  media.date, 
+  Media.Source, 
+  Media.Headline, 
+  Media.URL, 
+  Media.State, 
+  Media.City, 
+  Media.Hit_Sentence, 
+  Media.Reach, 
+  Media.Desktop_Reach, 
+  Media.Mobile_Reach, 
+  Media.Twitter_Social_Echo, 
+  Media.Facebook_Social_Echo, 
+  Media.Reddit_Social_Echo, 
+  Media.AVE, 
+  Media.Key_Phrases, 
+  Media.Major_Outlet, 
+  Contact.Percentile_Publications, 
+  Contact.Total_Engaged, 
+  Contact.Total_Engagements_Last_5_FYs, 
+  Contact.Award_Total
+from `Salesforce.Media_Mention` Media
+join `Salesforce.Contact` Contact
+  on Contact.CaseSafeID = Media.Contact
+WHERE 
+  EXTRACT(YEAR FROM media.date) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+  AND EXTRACT(MONTH FROM media.date) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+  AND Contact.Contact_Owner NOT LIKE '%courtland%';
