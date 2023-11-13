@@ -1,0 +1,191 @@
+WITH DeDupeSelection AS (
+  WITH Dimensions AS (
+    SELECT DISTINCT
+      CONCAT(First_Name," ",Last_Name) as Full_Name,
+      publication.title.preferred AS title,
+      journal.title AS journal_title,
+      CONCAT("https://theihs.lightning.force.com/",contact.CaseSafeID) as SalesforceLink,
+      Primary_Organization,
+      Primary_Discipline,
+      publication.id AS publication_id,
+      publication.DOI as DOI,
+      CONCAT("https://app.dimensions.ai/details/publication/",publication.id) as DatabaseLink,
+      publication.abstract.preferred AS abstract,
+      publication.type as pub_type,
+      citations_count as citations_count,
+      altmetrics.score AS altmetric_score,
+      researcher_id,
+      publication.date_normal as date,
+      contact.CaseSafeID,
+      Contact_Owner,
+      Total_Engaged,
+      Total_Engagements_Last_5_FYs,
+      Award_Total,
+      CASE WHEN 
+        CONTAINS_SUBSTR(publication.abstract, 'Institute for Humane Studies') OR 	CONTAINS_SUBSTR(publication.abstract, 'IHS0') OR 	CONTAINS_SUBSTR(publication.acknowledgements.original, 'Institute for Humane Studies') OR 	CONTAINS_SUBSTR(publication.acknowledgements.original, 'IHS0') 
+        THEN TRUE ELSE FALSE END AS IHS_Supported,
+      CASE WHEN 
+        CONTAINS_SUBSTR(publication.abstract, 'immigration') OR 	CONTAINS_SUBSTR(publication.abstract, 'migration') OR 	CONTAINS_SUBSTR(publication.abstract, 'immigrant') OR 	CONTAINS_SUBSTR(publication.abstract, 'refugee') 
+        THEN TRUE ELSE FALSE END AS Immigration_and_Freedom,
+      CASE WHEN 
+        CONTAINS_SUBSTR(publication.abstract, 'social trust') OR 	CONTAINS_SUBSTR(publication.abstract, 'political polarization') OR 	CONTAINS_SUBSTR(publication.abstract, 'affective polarization') OR 	CONTAINS_SUBSTR(publication.abstract, 'political polarization')
+      THEN TRUE ELSE FALSE END AS Liberalism_Pluralism_and_Democracy,
+      CASE WHEN 
+        CONTAINS_SUBSTR(publication.abstract, 'minority entrepreneurship') OR 	CONTAINS_SUBSTR(publication.abstract, 'racial') OR 	CONTAINS_SUBSTR(publication.abstract, 'minority') OR 	CONTAINS_SUBSTR(publication.abstract, 'diversity, equity, and inclu]sion') OR 	CONTAINS_SUBSTR(publication.abstract, 'African-American') OR 	CONTAINS_SUBSTR(publication.abstract, 'racialization') OR 	CONTAINS_SUBSTR(publication.abstract, 'race')
+        THEN TRUE ELSE FALSE END AS Race_in_America,
+      CASE WHEN 
+        CONTAINS_SUBSTR(publication.abstract, 'social entrepreneurship') OR 	CONTAINS_SUBSTR(publication.abstract, 'corporate governance') OR 	CONTAINS_SUBSTR(publication.abstract, 'corporate') OR 	CONTAINS_SUBSTR(publication.abstract, 'business ethic')
+        THEN TRUE ELSE FALSE END AS Business_and_the_Good_Society,
+      CASE WHEN 
+        CONTAINS_SUBSTR(publication.abstract, 'trade') OR 	CONTAINS_SUBSTR(publication.abstract, 'globalization') OR 	CONTAINS_SUBSTR(publication.abstract, 'international organization')
+        THEN TRUE ELSE FALSE END AS Peace_and_International_Cooperation,
+      CASE WHEN 
+        CONTAINS_SUBSTR(publication.abstract, 'misinformation') OR 	CONTAINS_SUBSTR(publication.abstract, 'disinformation') OR 	CONTAINS_SUBSTR(publication.abstract, 'section 230') OR 	CONTAINS_SUBSTR(publication.abstract, 'free speech')
+        THEN TRUE ELSE FALSE END AS Free_Speech_and_Open_Inquiry,
+      CASE WHEN 
+        CONTAINS_SUBSTR(publication.abstract, 'crime') OR 	CONTAINS_SUBSTR(publication.abstract, 'housing') OR 	CONTAINS_SUBSTR(publication.abstract, 'income inequality') OR 	CONTAINS_SUBSTR(publication.abstract, 'economic freedom') OR 	CONTAINS_SUBSTR(publication.abstract, 'education') OR 	CONTAINS_SUBSTR(publication.abstract, 'occupational licensing') OR 	CONTAINS_SUBSTR(publication.abstract, 'certificate of need') OR 	CONTAINS_SUBSTR(publication.abstract, 'scope of practice') OR 	CONTAINS_SUBSTR(publication.abstract, 'criminal justice') OR 	CONTAINS_SUBSTR(publication.abstract, 'policing') OR 	CONTAINS_SUBSTR(publication.abstract, 'prison') OR 	CONTAINS_SUBSTR(publication.abstract, 'rental') OR 	CONTAINS_SUBSTR(publication.abstract, 'homeowners') OR 	CONTAINS_SUBSTR(publication.abstract, 'criminal')
+        THEN TRUE ELSE FALSE END AS Equality_and_Prosperity
+    FROM `dimensions-ai.data_analytics.publications` publication 
+      CROSS JOIN
+        UNNEST(researcher_ids) researcher_id
+      INNER JOIN `Salesforce.Database_ID` db
+        ON researcher_id=db.Dimensions_ID
+      INNER JOIN `Salesforce.Contact`contact
+        ON contact.CaseSafeID=db.Contact_CaseSafeID
+      INNER JOIN `Salesforce.Award` award 
+        ON award.Recipient_CaseSafeID = contact.casesafeid
+    WHERE 
+      EXTRACT(YEAR FROM publication.date_normal) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+      AND EXTRACT(MONTH FROM publication.date_normal) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+      AND award.Account_CaseSafeID in (
+        "0016100000XJzLkAAL",
+        "00161000003OQYyAAO",
+        "00161000008oBcNAAU",
+        "00161000003OLsqAAG",
+        "00161000003OKAVAA4",
+        "00161000008oB6jAAE",
+        "00161000008oBWtAAM",
+        "00161000003OJZbAAO",
+        "00161000003OLstAAG",
+        "00161000003OJbGAAW"
+      )
+      AND Contact_Owner NOT LIKE 'Shane Courtland'
+  ),
+  SemanticScholar AS (
+    SELECT DISTINCT
+      CONCAT(First_Name," ",Last_Name) as Full_Name,
+      SemSch.title AS title,
+      SemSch.journal.name AS journal_title,
+      CONCAT("https://theihs.lightning.force.com/",contact.CaseSafeID) as SalesforceLink,
+      Primary_Organization,
+      Primary_Discipline,
+      CAST(SemSch.corpusid as STRING) AS publication_id,
+      SemSch.externalids.DOI as DOI,
+      SemSch.URL as DatabaseLink,
+      abstract AS abstract,
+      Venues.type as pub_type,
+      SemSch.citationcount as citations_count,
+      NULL AS altmetric_score,
+      CAST(AUTH.authorId AS STRING) as researcher_id,
+      SemSch.publicationdate as date,
+      contact.CaseSafeID,
+      Contact_Owner,
+      Total_Engaged,
+      Total_Engagements_Last_5_FYs,
+      Award_Total,
+      CASE WHEN 
+        CONTAINS_SUBSTR(abstract, 'Institute for Humane Studies') OR 	CONTAINS_SUBSTR(abstract, 'IHS0')
+        THEN TRUE ELSE FALSE END AS IHS_Supported,
+      CASE WHEN 
+        CONTAINS_SUBSTR(abstract, 'immigration') OR 	CONTAINS_SUBSTR(abstract, 'migration') OR 	CONTAINS_SUBSTR(abstract, 'immigrant') OR 	CONTAINS_SUBSTR(abstract, 'refugee') 
+        THEN TRUE ELSE FALSE END AS Immigration_and_Freedom,
+      CASE WHEN 
+        CONTAINS_SUBSTR(abstract, 'social trust') OR 	CONTAINS_SUBSTR(abstract, 'political polarization') OR 	CONTAINS_SUBSTR(abstract, 'affective polarization') OR 	CONTAINS_SUBSTR(abstract, 'political polarization')
+      THEN TRUE ELSE FALSE END AS Liberalism_Pluralism_and_Democracy,
+      CASE WHEN 
+        CONTAINS_SUBSTR(abstract, 'minority entrepreneurship') OR 	CONTAINS_SUBSTR(abstract, 'racial') OR 	CONTAINS_SUBSTR(abstract, 'minority') OR 	CONTAINS_SUBSTR(abstract, 'diversity, equity, and inclu]sion') OR 	CONTAINS_SUBSTR(abstract, 'African-American') OR 	CONTAINS_SUBSTR(abstract, 'racialization') OR 	CONTAINS_SUBSTR(abstract, 'race')
+        THEN TRUE ELSE FALSE END AS Race_in_America,
+      CASE WHEN 
+        CONTAINS_SUBSTR(abstract, 'social entrepreneurship') OR 	CONTAINS_SUBSTR(abstract, 'corporate governance') OR 	CONTAINS_SUBSTR(abstract, 'corporate') OR 	CONTAINS_SUBSTR(abstract, 'business ethic')
+        THEN TRUE ELSE FALSE END AS Business_and_the_Good_Society,
+      CASE WHEN 
+        CONTAINS_SUBSTR(abstract, 'trade') OR 	CONTAINS_SUBSTR(abstract, 'globalization') OR 	CONTAINS_SUBSTR(abstract, 'international organization')
+        THEN TRUE ELSE FALSE END AS Peace_and_International_Cooperation,
+      CASE WHEN 
+        CONTAINS_SUBSTR(abstract, 'misinformation') OR 	CONTAINS_SUBSTR(abstract, 'disinformation') OR 	CONTAINS_SUBSTR(abstract, 'section 230') OR 	CONTAINS_SUBSTR(abstract, 'free speech')
+        THEN TRUE ELSE FALSE END AS Free_Speech_and_Open_Inquiry,
+      CASE WHEN 
+        CONTAINS_SUBSTR(abstract, 'crime') OR 	CONTAINS_SUBSTR(abstract, 'housing') OR 	CONTAINS_SUBSTR(abstract, 'income inequality') OR 	CONTAINS_SUBSTR(abstract, 'economic freedom') OR 	CONTAINS_SUBSTR(abstract, 'education') OR 	CONTAINS_SUBSTR(abstract, 'occupational licensing') OR 	CONTAINS_SUBSTR(abstract, 'certificate of need') OR 	CONTAINS_SUBSTR(abstract, 'scope of practice') OR 	CONTAINS_SUBSTR(abstract, 'criminal justice') OR 	CONTAINS_SUBSTR(abstract, 'policing') OR 	CONTAINS_SUBSTR(abstract, 'prison') OR 	CONTAINS_SUBSTR(abstract, 'rental') OR 	CONTAINS_SUBSTR(abstract, 'homeowners') OR 	CONTAINS_SUBSTR(abstract, 'criminal')
+        THEN TRUE ELSE FALSE END AS Equality_and_Prosperity
+    from 
+      `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH  
+      JOIN `Salesforce.Database_ID` DatId
+        ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+      JOIN `Salesforce.Contact` contact 
+        ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+      LEFT JOIN `Semantic_Scholar.abstracts` Abstracts
+        ON Abstracts.corpusid = SemSch.corpusid
+      LEFT JOIN `Semantic_Scholar.publication-venues` Venues 
+        ON Venues.id = SemSch.publicationvenueid
+      JOIN `Salesforce.Award` award 
+        ON award.Recipient_CaseSafeID = contact.casesafeid
+    WHERE 
+      EXTRACT(YEAR FROM SemSch.publicationdate) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+      AND EXTRACT(MONTH FROM SemSch.publicationdate) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+      AND award.Account_CaseSafeID in (
+        "0016100000XJzLkAAL",
+        "00161000003OQYyAAO",
+        "00161000008oBcNAAU",
+        "00161000003OLsqAAG",
+        "00161000003OKAVAA4",
+        "00161000008oB6jAAE",
+        "00161000008oBWtAAM",
+        "00161000003OJZbAAO",
+        "00161000003OLstAAG",
+        "00161000003OJbGAAW"
+      )
+      AND Contact_Owner NOT LIKE 'Shane Courtland'
+  )
+  SELECT
+    Full_Name,
+    title,
+    journal_title,
+    SalesforceLink,
+    Primary_Organization,
+    Primary_Discipline,
+    publication_id,
+    DOI,
+    DatabaseLink,
+    abstract,
+    pub_type,
+    citations_count,
+    altmetric_score,
+    DOI,
+    researcher_id,
+    date,
+    CaseSafeID,
+    Contact_Owner,
+    Total_Engaged,
+    Total_Engagements_Last_5_FYs,
+    Award_Total,
+    IHS_Supported,
+    Immigration_and_Freedom,
+    Liberalism_Pluralism_and_Democracy,
+    Race_in_America,
+    Business_and_the_Good_Society,
+    Peace_and_International_Cooperation,
+    Free_Speech_and_Open_Inquiry,
+    Equality_and_Prosperity,
+    ROW_NUMBER() OVER (PARTITION BY LOWER(DOI), LOWER(CaseSafeID) ORDER BY Altmetric_Score) as unique
+  FROM (
+    Select * from Dimensions
+    UNION ALL
+    Select * from SemanticScholar
+  ) as Fellows_Publications
+)
+SELECT
+  *
+FROM
+  DeDupeSelection
+WHERE
+  unique = 1
