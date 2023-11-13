@@ -1,0 +1,34 @@
+SELECT 
+  Last_Name_First_Name__c, 
+  CaseSafeID__c, 
+  Primary_Affiliation_Record_Type__c, 
+  Contributor__c, 
+  Possible_Contributor__c, 
+  Primary_Discipline__c, 
+  OwnerID, 
+  Highest_Outreach_Priority__c, 
+  Recent_Graduation_Year__c, 
+  Dimensions_Citations_Total__c, 
+  Semantic_Scholar_Citations_Total__c, 
+  Percentile_Citations__c, 
+  Percentile_Publications__c, 
+  Date_First_Engagement__c, 
+  Date_Last_Engagement__c 
+FROM Contact 
+WHERE 
+  OwnerID != '00561000003YfcT' 
+  AND 
+    (
+      (
+        (
+          Contact.Date_First_Engagement__c >= LAST_MONTH
+          AND Contact.Date_Last_Engagement__c < THIS_MONTH
+        ) 
+        AND Contact.Total_Engagements_Last_5_FYs__c >= 1
+      ) 
+      OR 
+      (
+        Contact.Date_Last_Engagement__c >= LAST_N_MONTHS:61 
+        AND Contact.Date_Last_Engagement__c < LAST_N_MONTHS:60
+      )
+    )
