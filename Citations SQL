@@ -1,0 +1,377 @@
+WITH DeduplicatedResults AS (
+  WITH Selection_Query as (
+    WITH DimensionsPairs as (
+      WITH DimSource as (
+        select distinct 
+          Dim.id as Source_ID,
+          Dim.title.preferred as Source_Title,
+          Dim.doi as Source_DOI,
+          Dim.date_normal as Source_Date,
+          CONCAT(contact.First_Name,' ',contact.Last_Name) as Source_Author,
+          contact.CaseSafeID as Source_CSID,
+          AUTH.researcher_id as Source_Author_ID,
+          CIT.id as Citation_Id
+        from 
+          dimensions-ai.data_analytics.publications Dim , unnest(authors) as AUTH , unnest(citations) as CIT 
+            INNER JOIN `Salesforce.Database_ID` DatId 
+              ON researcher_id=DatId.Dimensions_ID 
+            INNER JOIN `Salesforce.Contact` contact 
+              ON contact.CaseSafeID=DatId.Contact_CaseSafeID 
+        WHERE 
+          Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+      ),
+      DimCitation as (
+        select distinct
+          Dim.id as Citation_Id,
+          Dim.title.preferred as Citation_Title,
+          Dim.doi as Citation_DOI,
+          Dim.date_normal as Citation_Date,
+          CONCAT(contact.First_Name,' ',contact.Last_Name) as Citation_Author,
+          contact.CaseSafeID as Citation_CSID,
+          AUTH.researcher_id as Citation_Author_ID
+        from
+          dimensions-ai.data_analytics.publications Dim , unnest(authors) as AUTH , unnest(citations) as CIT 
+            INNER JOIN `Salesforce.Database_ID` DatId 
+              ON researcher_id=DatId.Dimensions_ID 
+            INNER JOIN `Salesforce.Contact` contact 
+              ON contact.CaseSafeID=DatId.Contact_CaseSafeID 
+        WHERE
+          EXTRACT(YEAR FROM Dim.date_normal) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND EXTRACT(MONTH FROM Dim.date_normal) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+      ) 
+      SELECT DISTINCT
+        Source_Author,
+        Citation_Author,
+        Source_Title,
+        Source_ID,
+        Source_DOI,
+        Source_Date,
+        Citation_Title,
+        DimCitation.Citation_ID,
+        Citation_DOI,
+        Citation_Date,
+        Source_CSID,
+        Source_Author_ID,
+        Citation_CSID,
+        Citation_Author_ID,
+        CONCAT(Source_CSID,"-",Citation_CSID) as Relationship_Code
+      from DimSource 
+        left join DimCitation 
+          on DimSource.Citation_ID = DimCitation.Citation_Id 
+      WHERE
+        Source_CSID != Citation_CSID
+    ),
+    SemanticScholarPairs as (
+      WITH SemSchSource as (
+        select distinct 
+          SemSch.corpusid as Source_ID,
+          SemSch.title as Source_Title,
+          SemSch.externalids.doi as Source_DOI,
+          SemSch.publicationdate as Source_Date,
+          CONCAT(contact.First_Name,' ',contact.Last_Name) as Source_Author,
+          contact.CaseSafeID as Source_CSID,
+          AUTH.authorid as Source_Author_ID,
+          Citations.citingcorpusid as Citation_Id
+        from 
+          `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH
+          LEFT JOIN `Semantic_Scholar.citations` Citations
+            ON SemSch.corpusid = Citations.citedcorpusid 	  
+          JOIN `Salesforce.Database_ID` DatId
+            ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+          JOIN `Salesforce.Contact` contact 
+            ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        WHERE 
+          Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+      ),
+      SemSchCitation as (
+        select distinct
+          SemSch.corpusid as Citation_Id,
+          SemSch.title as Citation_Title,
+          SemSch.externalids.doi as Citation_DOI,
+          SemSch.publicationdate as Citation_Date,
+          CONCAT(contact.First_Name,' ',contact.Last_Name) as Citation_Author,
+          contact.CaseSafeID as Citation_CSID,
+          AUTH.authorid as Citation_Author_ID
+        from 
+          `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH  
+          JOIN `Salesforce.Database_ID` DatId
+            ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+          JOIN `Salesforce.Contact` contact 
+            ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+        WHERE 
+          EXTRACT(YEAR FROM SemSch.publicationdate) = EXTRACT(YEAR FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND EXTRACT(MONTH FROM SemSch.publicationdate) = EXTRACT(MONTH FROM DATE_ADD(CURRENT_DATE(), INTERVAL -1 MONTH))
+          AND Total_Engagements_Last_5_FYs>=1
+          AND Contact_Owner NOT LIKE 'Shane Courtland'
+      ) 
+      SELECT DISTINCT
+        Source_Author,
+        Citation_Author,
+        Source_Title,
+        CAST(Source_ID as STRING),
+        Source_DOI,
+        Source_Date,
+        Citation_Title,
+        CAST(SemSchCitation.Citation_ID as STRING),
+        Citation_DOI,
+        Citation_Date,
+        Source_CSID,
+        CAST(Source_Author_ID as STRING),
+        Citation_CSID,
+        CAST(Citation_Author_ID as STRING),
+        CONCAT(Source_CSID,"-",Citation_CSID) as Relationship_Code
+      from SemSchSource 
+        left join SemSchCitation 
+          on SemSchSource.Citation_ID = SemSchCitation.Citation_Id 
+      WHERE
+        Source_CSID != Citation_CSID
+    )
+    Select 
+      *,
+      CONCAT(Source_CSID,"-",Citation_CSID,"-",Citation_DOI) as Instance_Check_Code,
+      CASE WHEN
+        Source_CSID < Citation_CSID
+        THEN CONCAT(Citation_CSID,"-",Source_CSID)
+        ELSE CONCAT(Source_CSID,"-",Citation_CSID)
+        END AS CamMemCode
+    from (
+      Select * from DimensionsPairs
+      UNION ALL
+      Select * from SemanticScholarPairs
+    ) as Citation_Results
+  ),
+  Total_Query as (
+    WITH AllPairs as (
+      WITH DimensionsPairs as (
+        WITH DimSource as (
+          select distinct 
+            Dim.id as Source_ID,
+            Dim.title.preferred as Source_Title,
+            Dim.doi as Source_DOI,
+            Dim.date_normal as Source_Date,
+            CONCAT(contact.First_Name,' ',contact.Last_Name) as Source_Author,
+            contact.CaseSafeID as Source_CSID,
+            AUTH.researcher_id as Source_Author_ID,
+            CIT.id as Citation_Id
+          from 
+            dimensions-ai.data_analytics.publications Dim , unnest(authors) as AUTH , unnest(citations) as CIT 
+              INNER JOIN `Salesforce.Database_ID` DatId 
+                ON researcher_id=DatId.Dimensions_ID 
+              INNER JOIN `Salesforce.Contact` contact 
+                ON contact.CaseSafeID=DatId.Contact_CaseSafeID 
+          WHERE 
+            Total_Engagements_Last_5_FYs>=1
+            AND Contact_Owner NOT LIKE 'Shane Courtland'
+        ),
+        DimCitation as (
+          select distinct
+            Dim.id as Citation_Id,
+            Dim.title.preferred as Citation_Title,
+            Dim.doi as Citation_DOI,
+            Dim.date_normal as Citation_Date,
+            CONCAT(contact.First_Name,' ',contact.Last_Name) as Citation_Author,
+            contact.CaseSafeID as Citation_CSID,
+            AUTH.researcher_id as Citation_Author_ID
+          from
+            dimensions-ai.data_analytics.publications Dim , unnest(authors) as AUTH , unnest(citations) as CIT 
+              INNER JOIN `Salesforce.Database_ID` DatId 
+                ON researcher_id=DatId.Dimensions_ID 
+              INNER JOIN `Salesforce.Contact` contact 
+                ON contact.CaseSafeID=DatId.Contact_CaseSafeID 
+          WHERE
+            Total_Engagements_Last_5_FYs>=1
+            AND Contact_Owner NOT LIKE 'Shane Courtland'
+        ) 
+        SELECT DISTINCT
+          Source_Author,
+          Citation_Author,
+          Source_Title,
+          Source_ID,
+          Source_DOI,
+          Source_Date,
+          Citation_Title,
+          DimCitation.Citation_ID,
+          Citation_DOI,
+          Citation_Date,
+          Source_CSID,
+          Source_Author_ID,
+          Citation_CSID,
+          Citation_Author_ID,
+          CONCAT(Source_CSID,"-",Citation_CSID) as Relationship_Code
+        from DimSource 
+          left join DimCitation 
+            on DimSource.Citation_ID = DimCitation.Citation_Id 
+        WHERE
+          Source_CSID != Citation_CSID
+      ),
+      SemanticScholarPairs as (
+        WITH SemSchSource as (
+          select distinct 
+            SemSch.corpusid as Source_ID,
+            SemSch.title as Source_Title,
+            SemSch.externalids.doi as Source_DOI,
+            SemSch.publicationdate as Source_Date,
+            CONCAT(contact.First_Name,' ',contact.Last_Name) as Source_Author,
+            contact.CaseSafeID as Source_CSID,
+            AUTH.authorid as Source_Author_ID,
+            Citations.citingcorpusid as Citation_Id
+          from 
+            `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH
+            LEFT JOIN `Semantic_Scholar.citations` Citations
+              ON SemSch.corpusid = Citations.citedcorpusid 	  
+            JOIN `Salesforce.Database_ID` DatId
+              ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+            JOIN `Salesforce.Contact` contact 
+              ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+          WHERE 
+            Total_Engagements_Last_5_FYs>=1
+            AND Contact_Owner NOT LIKE 'Shane Courtland'
+        ),
+        SemSchCitation as (
+          select distinct
+            SemSch.corpusid as Citation_Id,
+            SemSch.title as Citation_Title,
+            SemSch.externalids.doi as Citation_DOI,
+            SemSch.publicationdate as Citation_Date,
+            CONCAT(contact.First_Name,' ',contact.Last_Name) as Citation_Author,
+            contact.CaseSafeID as Citation_CSID,
+            AUTH.authorid as Citation_Author_ID
+          from 
+            `academic-research-352721.Semantic_Scholar.papers` SemSch, unnest(authors) as AUTH  
+            JOIN `Salesforce.Database_ID` DatId
+              ON CAST(AUTH.authorid AS STRING) = DatId.Semantic_Scholar_ID 
+            JOIN `Salesforce.Contact` contact 
+              ON contact.CaseSafeID=DatId.Contact_CaseSafeID
+          WHERE 
+            Total_Engagements_Last_5_FYs>=1
+            AND Contact_Owner NOT LIKE 'Shane Courtland'
+        ) 
+        SELECT DISTINCT
+          Source_Author,
+          Citation_Author,
+          Source_Title,
+          CAST(Source_ID as STRING),
+          Source_DOI,
+          Source_Date,
+          Citation_Title,
+          CAST(SemSchCitation.Citation_ID as STRING),
+          Citation_DOI,
+          Citation_Date,
+          Source_CSID,
+          CAST(Source_Author_ID as STRING),
+          Citation_CSID,
+          CAST(Citation_Author_ID as STRING),
+          CONCAT(Source_CSID,"-",Citation_CSID) as Relationship_Code
+        from SemSchSource 
+          left join SemSchCitation 
+            on SemSchSource.Citation_ID = SemSchCitation.Citation_Id 
+        WHERE
+          Source_CSID != Citation_CSID
+      )
+      Select 
+        *,
+        CONCAT(Source_CSID,"-",Citation_CSID,"-",Citation_DOI) as Instance_Check_Code
+      from (
+        Select * from DimensionsPairs
+        UNION ALL
+        Select * from SemanticScholarPairs
+      ) as Citation_Results
+    )
+    SELECT DISTINCT
+      *
+    FROM (
+      SELECT
+          *,
+          ROW_NUMBER() OVER (PARTITION BY Relationship_Code ORDER BY Citation_Date) as row_num
+      FROM AllPairs
+  ) as RankedPairs
+  WHERE row_num = 1
+  ),
+CampaignMatchQuery as (
+  With Attendee1 as (
+    SELECT
+      Campaign_ID,
+      Related_Record_ID
+    FROM
+      `Salesforce.CampaignMember` CamMem
+    WHERE
+      Member_Status = "Completed"
+  ),
+  Attendee2 as (
+    SELECT
+      Campaign_ID,
+      Related_Record_ID
+    FROM
+      `Salesforce.CampaignMember` CamMem
+    WHERE
+      Member_Status = "Completed"
+  )
+  SELECT DISTINCT
+    CASE WHEN
+      Attendee2.Related_Record_ID < Attendee1.Related_Record_ID
+      THEN CONCAT(Attendee1.Related_Record_ID,"-",Attendee2.Related_Record_ID)
+      ELSE CONCAT(Attendee2.Related_Record_ID,"-",Attendee1.Related_Record_ID)
+      END AS CamMemCode
+  from 
+    Attendee1
+      JOIN Attendee2
+        ON Attendee1.Campaign_ID = Attendee2.Campaign_ID
+  WHERE
+    Attendee1.Related_Record_ID != Attendee2.Related_Record_ID
+)
+  SELECT
+    Selection_Query.Source_Author,
+    Selection_Query.Citation_Author,
+    CASE
+      WHEN Total_Query.Relationship_Code IS NOT NULL THEN 'First instance'
+      ELSE 'Not first instance'
+    END AS First_Instance_Status,
+    CASE
+      WHEN CampaignMatchQuery.CamMemCode IS NOT NULL THEN 'Have attended together'
+      ELSE 'Have not attended together'
+    END AS Co_Attendance_Status,
+    Selection_Query.Source_Title,
+    Selection_Query.Source_ID,
+    Selection_Query.Source_DOI,
+    Selection_Query.Source_Date,
+    Selection_Query.Citation_Title,
+    Selection_Query.Citation_ID,
+    Selection_Query.Citation_DOI,
+    Selection_Query.Citation_Date,
+    Selection_Query.Source_CSID,
+    Selection_Query.Source_Author_ID,
+    Selection_Query.Citation_CSID,
+    Selection_Query.Citation_Author_ID,
+    CONCAT(Selection_Query.Source_CSID,"-",Selection_Query.Citation_CSID) as Relationship_Code,
+    ROW_NUMBER() OVER (PARTITION BY LOWER(Selection_Query.Source_DOI), LOWER(Selection_Query.Citation_DOI), LOWER(Selection_Query.Source_CSID), LOWER(Selection_Query.Citation_CSID) ORDER BY Selection_Query.Source_Author) as unique
+  FROM
+    Selection_Query
+      LEFT JOIN Total_Query 
+        ON Selection_Query.Instance_Check_Code = Total_Query.Instance_Check_Code
+      LEFT JOIN CampaignMatchQuery
+        ON Selection_Query.CamMemCode = CampaignMatchQuery.CamMemCode
+)
+SELECT
+  Source_Author,
+  Citation_Author,
+  First_Instance_Status,
+  Co_Attendance_Status,
+  Source_Title,
+  Source_ID,
+  Source_DOI,
+  Source_Date,
+  Citation_Title,
+  Citation_ID,
+  Citation_DOI,
+  Citation_Date,
+  Source_CSID,
+  Source_Author_ID,
+  Citation_CSID,
+  Citation_Author_ID,
+  Relationship_Code
+FROM DeduplicatedResults
+WHERE unique = 1;
